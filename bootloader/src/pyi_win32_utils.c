@@ -30,6 +30,7 @@
 #include <stdio.h>    /* _fileno */
 #include <io.h>       /* _get_osfhandle */
 #include <signal.h>   /* signal */
+#include <sddl.h>     /* ConvertStringSecurityDescriptorToSecurityDescriptorW */
 
 /* PyInstaller headers. */
 #include "msvc_stdint.h" /* int32_t */
@@ -569,6 +570,36 @@ char **
 pyi_win32_argv_mbcs_from_utf8_sfn(int argc, char **argv)
 {
     return pyi_win32_argv_mbcs_from_utf8_ex(argc, argv, 1);
+}
+
+/* Create a directory at path with restricted permissions.
+ *  The directory owner will be the only one with permissions on the created dir.
+ *  Calling this function is equivalent to call chmod(path, 0700) on Linux.
+ *  return 1 on success, 0 on error
+ */
+int
+pyi_win32_mkdir(cont wchar_t* path)
+{
+    wchar_t stringSecurityDesc[] = // ACE String :
+        L"D:" // DACL (D) :
+        L"(A;" // Authorize (A)
+        L";FA;" // FILE_ALL_ACCESS (FA)
+        L";;S-1-3-4)"; // For the current directory owner (SID: S-1-3-4)
+        // no other permissions are granted
+
+	SECURITY_ATTRIBUTES securityAttr;
+	securityAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	securityAttr.bInheritHandle = FALSE;
+	PSECURITY_DESCRIPTOR *lpSecurityDesc = &securityAttr.lpSecurityDescriptor;
+
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(stringSecurityDesc,
+                                                              SDDL_REVISION_1,
+                                                              lpSecurityDesc,
+                                                              NULL))
+        return 0;
+	if (!CreateDirectoryW(path, &securityAttr))
+        return 0;
+    return 1;
 }
 
 #endif  /* _WIN32 */
